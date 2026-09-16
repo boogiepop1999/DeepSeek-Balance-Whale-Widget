@@ -67,14 +67,15 @@
 - 读 `DEEPSEEK_PLATFORM_TOKEN`（平台会话令牌，非 API key），请求 `https://platform.deepseek.com/api/v0/usage/by_api_key/amount?start=<本地零点>&end=<+86400>&tz=28800`，头 `Authorization: Bearer <token>`，15 秒超时。
 - 响应结构：`data.biz_data.series[]`，每项 `{model, buckets:[{time, usage:{RESPONSE_TOKEN, PROMPT_CACHE_HIT_TOKEN, PROMPT_CACHE_MISS_TOKEN}}]}`。**注意：接口不返回金额，只有 token 数**。
 - **峰谷定价换算**：按每个小时桶的整点（北京时间 UTC+8）判定空闲/高峰，套用 `PRICING` 表（每百万 token 单价）求和：
-  - 高峰时段：工作日 9:00–12:00 与 14:00–18:00；**2026-08-23 起（北京时间）周末（周六/周日）全天按谷价**。
+  - 高峰时段：9:00–12:00 与 14:00–18:00（北京时间），不区分工作日/周末——调休无法用星期几判定，公开价目表本身也不按周末打折。
   - 单价（空闲 / 高峰，元每百万 token）：`deepseek-flash` 命中 0.02 / 0.04、未命中 1.0 / 2.0、输出 4.0 / 8.0；`deepseek-v4-pro` 命中 0.15 / 0.30、未命中 4.5 / 9.0、输出 13.5 / 27.0。
     - `PRICING` 是**「模型 id → 该 id 的价格」一对一直接对照表**，没有档位常量那层间接；新增模型直接加一行。
     - **按模型 id 精确匹配**（大小写敏感，不做包含/前缀/小写化猜测）；未列出的模型一律落 `_default`。
   - `_default` 为**全零价**（`hit/miss/out` 全 0）。未配价模型算出的金额是 0，而 `finalizeTurn` 用 `cost > 0` 判断，所以这些模型**不弹消耗泡泡、不打日志、不报错**——这是有意为之（静默按 0 计）。
-  - 定价表在 `lib/index.js` 顶部 `PEAK_HOURS` / `PRICING` 常量，周末谷价的生效分界在 `WEEKEND_VALLEY_FROM_SEC`，DeepSeek 调价时改这里。
+  - 定价表在 `lib/index.js` 顶部 `PEAK_HOURS` / `PRICING` 常量，DeepSeek 调价时改这里。
+  - **改价时同步**：README「定价表与计费口径（AI 维护必读）」一节有人读版汇总表（当前价目表 / 峰谷时段 / 换算公式 / 改动清单），与本节必须保持一致。
   - 模型名匹配用 `d.message.source.model`，它是模型 **id**（不是展示用的 `name`）。
-  - 注意下游：`finalizeTurn` 有 `cost > 0` 判断，未配价模型（0 元）**不会**写入 `last-turn.json`，故不会弹消耗泡泡——只能从宿主警告日志感知。
+  - 注意下游：`finalizeTurn` 有 `cost > 0` 判断，未配价模型（0 元）**不会**写入 `last-turn.json`，故不会弹消耗泡泡。
 - 无令牌或令牌失效时自动回落记账模式（`usageMode` 仍标记为 'ledger'）。
 
 ### 每轮对话消耗（Host，会话事件监听）
@@ -180,7 +181,7 @@ div.dshwv-root（position:fixed，承载定位与翻转）
 | 数字动画 | 700ms ease-out 三次方（requestAnimationFrame） |
 | 自动刷新 | 60s；变化提示 900ms；气泡 5s 自动收起 |
 | 配置持久化 | `$DSH_HOME/.dshw-size.json`（回退 profile 下）；账本 `$DSH_HOME/.dshw-usage.json` |
-| 峰值判定 | 北京时间：工作日高峰 9–12 与 14–18 点；2026-08-23 起周末全天谷价 |
+| 峰值判定 | 北京时间：高峰 9–12 与 14–18 点，其余空闲；不区分工作日/周末（调休无法用星期几判定） |
 | 音效 | press=Ya1/D1、release=Ya2/D2；按请求读盘，no-store |
 | z-index | 9999，`position: fixed`；菜单 10000 |
 
